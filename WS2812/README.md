@@ -73,7 +73,7 @@ WS2812 LEDs use **GRB order** (Green, Red, Blue), not RGB. The encoding function
 ### Build Steps
 
 ```powershell
-cd C:\Users\jimfr\sandbox\Qualcomm-QCC748M\QCC74x-Jim\WS2812
+cd .\WS2812
 .\build.ps1
 ```
 
@@ -86,14 +86,17 @@ The build script will:
 ## Flashing and Running
 
 1. **Flash the firmware** to your QCC748M EVK
-2. **Connect your serial terminal:**
+   ```powershell 
+   make flash CHIP=qcc743 COMX=COM5
+   ```
+3. **Connect your serial terminal:**
    ```powershell
    python -m serial.tools.miniterm COM5 2000000 --filter colorize
    ```
 
    Press `Ctrl+]` to exit miniterm
 
-3. **Expected Output:**
+4. **Expected Output:**
    ```
    ╔════════════════════════════════════════╗
    ║  WS2812 LED Strip Driver Demo         ║
