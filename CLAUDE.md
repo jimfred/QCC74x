@@ -2,11 +2,17 @@
 
 ## Project Overview
 
-This repository contains embedded firmware projects for the **Qualcomm QCC748M EVK** (Evaluation Kit) using the **QCCSDK-QCC74x** SDK. The primary focus is on developing drivers and applications for the QCC743/QCC748M RISC-V microcontrollers.
+This repository contains embedded firmware projects for the **Qualcomm QCC748M EVK** (Evaluation Kit). It supports multiple embedded frameworks and RTOSes for the QCC743/QCC748M RISC-V microcontrollers.
+
+### Supported Frameworks
+
+- **QCCSDK-QCC74x**: Qualcomm's native SDK (bare metal and lightweight RTOS)
+- **Zephyr RTOS**: Open-source, scalable RTOS (when applicable)
+- **Custom bare-metal**: Direct hardware programming
 
 ### Current Projects
 
-- **WS2812**: High-performance WS2812/WS2812B addressable RGB LED strip driver using SPI+DMA
+- **WS2812**: High-performance WS2812/WS2812B addressable RGB LED strip driver using SPI+DMA (QCCSDK)
 
 ## Hardware Platform
 
@@ -62,14 +68,173 @@ python -m serial.tools.miniterm COM5 2000000 --filter colorize
 QCC74x/
 ├── CLAUDE.md                 # This file - project documentation for autonomous AI
 ├── .gitignore               # Git ignore rules
-└── WS2812/                  # WS2812 LED driver project
-    ├── main.cpp             # Main application code
-    ├── Makefile             # Build configuration
-    ├── CMakeLists.txt       # CMake project file
-    ├── proj.conf            # Project settings
-    ├── build.ps1            # PowerShell build script
-    ├── flash_prog_cfg.ini   # Flash programmer configuration
-    └── README.md            # Project-specific documentation
+├── WS2812/                  # WS2812 LED driver project (QCCSDK)
+│   ├── main.cpp             # Main application code
+│   ├── Makefile             # Build configuration
+│   ├── CMakeLists.txt       # CMake project file
+│   ├── proj.conf            # Project settings
+│   ├── build.ps1            # PowerShell build script
+│   ├── flash_prog_cfg.ini   # Flash programmer configuration
+│   └── README.md            # Project-specific documentation
+└── [NewProject]/            # Template for new projects
+    ├── src/                 # Source files
+    ├── include/             # Header files (optional)
+    ├── CMakeLists.txt       # Build configuration
+    ├── README.md            # Project documentation
+    └── [Framework-specific files]
+```
+
+## Creating New Projects
+
+### General Project Creation Guidelines
+
+When creating a new project in this repository:
+
+1. **Create a dedicated directory** at the repository root (e.g., `Zephyr_Blinky/`)
+2. **Choose the appropriate framework**:
+   - **QCCSDK**: Use for Qualcomm-specific features, bare-metal, or lightweight apps
+   - **Zephyr RTOS**: Use for portable, RTOS-based applications with threading, networking, etc.
+   - **Bare-metal**: Use for minimal, hardware-specific code
+3. **Include essential files**:
+   - Source code (`main.c`, `main.cpp`, or `src/` directory)
+   - Build configuration (`CMakeLists.txt`, `Makefile`, or `prj.conf`)
+   - Documentation (`README.md`)
+4. **Follow naming conventions**: Use descriptive directory names (e.g., `UART_Shell`, `BLE_Beacon`, `Zephyr_Threading`)
+
+### Creating a QCCSDK Project
+
+Use the existing **WS2812** project as a template:
+
+**Required files:**
+- `main.cpp` or `main.c` - Main application
+- `Makefile` - Links to QCCSDK build system
+- `CMakeLists.txt` - CMake configuration
+- `proj.conf` - SDK configuration options
+- `README.md` - Project documentation
+
+**Makefile template:**
+```makefile
+SDK_DEMO_PATH ?= .
+QCC74x_SDK_BASE ?= $(SDK_DEMO_PATH)/../../QCCSDK-QCC74x
+
+export QCC74x_SDK_BASE
+
+CHIP ?= qcc743
+BOARD ?= qcc743dk
+CROSS_COMPILE ?= riscv64-unknown-elf-
+
+include $(QCC74x_SDK_BASE)/project.build
+```
+
+**CMakeLists.txt template:**
+```cmake
+cmake_minimum_required(VERSION 3.15)
+
+include(proj.conf)
+
+find_package(qcc74x_sdk REQUIRED HINTS $ENV{QCC74x_SDK_BASE})
+
+sdk_set_main_file(main.cpp)
+
+project(your_project_name)
+```
+
+### Creating a Zephyr RTOS Project
+
+**Prerequisites:**
+- Zephyr SDK installed (see [Zephyr Getting Started](https://docs.zephyrproject.org/latest/develop/getting_started/index.html))
+- West build tool (`pip install west`)
+- Appropriate board configuration for QCC74x (may require custom board definition)
+
+**Required files:**
+- `src/main.c` - Application entry point
+- `prj.conf` - Zephyr project configuration
+- `CMakeLists.txt` - Zephyr CMake configuration
+- `README.md` - Project documentation
+- `boards/` (optional) - Custom board definitions if QCC74x not in mainline Zephyr
+
+**CMakeLists.txt template (Zephyr):**
+```cmake
+cmake_minimum_required(VERSION 3.20.0)
+
+find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+project(zephyr_example)
+
+target_sources(app PRIVATE src/main.c)
+```
+
+**prj.conf template:**
+```conf
+# Zephyr configuration
+CONFIG_CONSOLE=y
+CONFIG_UART_CONSOLE=y
+CONFIG_SERIAL=y
+CONFIG_PRINTK=y
+
+# Add your Zephyr features
+# CONFIG_GPIO=y
+# CONFIG_SPI=y
+# CONFIG_I2C=y
+```
+
+**Build commands (Zephyr):**
+```bash
+# Initialize Zephyr environment (first time)
+west init -l .
+west update
+
+# Build for custom board (may need board definition)
+west build -b qcc743dk ./ProjectName
+
+# Flash
+west flash
+```
+
+**Note on Zephyr support**: The QCC743/QCC748M may not have official Zephyr board support. You may need to:
+1. Create a custom board definition in `boards/riscv/qcc743dk/`
+2. Define device tree, Kconfig, and board configuration
+3. Or use a compatible RISC-V board as a starting point and adapt
+
+### Project Templates
+
+#### Bare-Metal Blinky (QCCSDK)
+```
+Blinky/
+├── main.c
+├── Makefile
+├── CMakeLists.txt
+├── proj.conf
+└── README.md
+```
+
+#### Zephyr RTOS Example
+```
+Zephyr_Shell/
+├── src/
+│   └── main.c
+├── boards/               # If custom board needed
+│   └── riscv/
+│       └── qcc743dk/
+├── CMakeLists.txt
+├── prj.conf
+├── west.yml             # Optional: for dependencies
+└── README.md
+```
+
+#### Multi-File Project (QCCSDK)
+```
+Advanced_Driver/
+├── src/
+│   ├── main.cpp
+│   ├── driver.cpp
+│   └── utils.cpp
+├── include/
+│   ├── driver.h
+│   └── utils.h
+├── Makefile
+├── CMakeLists.txt
+├── proj.conf
+└── README.md
 ```
 
 ## Coding Conventions
@@ -107,6 +272,34 @@ QCC74x/
 - **Adjusting project settings**: Edit `proj.conf` for SDK features
 - **Build system changes**: Modify `Makefile` or `CMakeLists.txt`
 - **Documentation**: Update project README.md files
+- **Creating new projects**: Follow the "Creating New Projects" guidelines above
+
+### Autonomous Project Creation Workflow
+
+When asked to create a new project (e.g., "Create a Zephyr RTOS example"):
+
+1. **Understand requirements**: Clarify project type, framework, and features needed
+2. **Choose framework**: Select QCCSDK, Zephyr, or bare-metal based on requirements
+3. **Create project structure**:
+   - Create new directory with descriptive name
+   - Add required files based on framework templates (see "Creating New Projects")
+   - Include comprehensive README.md
+4. **Implement core functionality**: Write minimal working example
+5. **Update CLAUDE.md**: Add new project to "Current Projects" list
+6. **Test build configuration**: Ensure build files are syntactically correct
+7. **Document**: Provide clear README with build instructions, hardware requirements, and usage
+
+**Example autonomous workflow for "Create a Zephyr blinky example":**
+
+```
+1. Create Zephyr_Blinky/ directory
+2. Add src/main.c with GPIO toggle code
+3. Create prj.conf with CONFIG_GPIO=y
+4. Create CMakeLists.txt for Zephyr build
+5. Write README.md with setup and build instructions
+6. Update CLAUDE.md to list new project
+7. Commit all files with descriptive message
+```
 
 ## Common Issues & Solutions
 
