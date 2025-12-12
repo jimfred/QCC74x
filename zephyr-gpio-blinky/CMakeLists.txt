@@ -2,7 +2,14 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
-find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(zephyr_gpio_blinky)
+# Try to find Zephyr, but don't fail if not found
+find_package(Zephyr QUIET HINTS $ENV{ZEPHYR_BASE})
 
-target_sources(app PRIVATE src/main.c)
+if(Zephyr_FOUND)
+    project(zephyr_gpio_blinky)
+    target_sources(app PRIVATE src/main.c)
+else()
+    message(WARNING "Zephyr SDK not found - this is a Zephyr RTOS project")
+    message(STATUS "Install Zephyr: https://docs.zephyrproject.org/latest/getting_started/")
+    project(zephyr_gpio_blinky NONE)
+endif()
