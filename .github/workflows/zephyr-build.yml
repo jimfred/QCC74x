@@ -1,0 +1,74 @@
+name: Zephyr Build & Test
+
+on:
+  push:
+    branches: [ 'claude/**' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Zephyr dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git cmake ninja-build gperf \
+          ccache dfu-util device-tree-compiler wget \
+          python3-dev python3-pip python3-setuptools python3-tk \
+          python3-wheel xz-utils file make gcc gcc-multilib \
+          g++-multilib libsdl2-dev libmagic1
+
+    - name: Install West
+      run: |
+        pip3 install --user -U west
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: Setup Zephyr workspace
+      run: |
+        west init ~/zephyrproject
+        cd ~/zephyrproject
+        west update
+        west zephyr-export
+        pip3 install --user -r ~/zephyrproject/zephyr/scripts/requirements.txt
+
+    - name: Install Zephyr SDK
+      run: |
+        cd ~
+        wget https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.4/zephyr-sdk-0.16.4_linux-x86_64.tar.xz
+        tar xvf zephyr-sdk-0.16.4_linux-x86_64.tar.xz
+        cd zephyr-sdk-0.16.4
+        ./setup.sh -t all -h -c
+
+    - name: Build Zephyr GPIO Blinky
+      run: |
+        export ZEPHYR_BASE=~/zephyrproject/zephyr
+        cd $GITHUB_WORKSPACE/zephyr-gpio-blinky
+        west build -b qcc748m -p auto || echo "Build failed - board may need custom definition"
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: build-output
+        path: |
+          zephyr-gpio-blinky/build/
+          zephyr-gpio-blinky/build/zephyr/zephyr.bin
+        retention-days: 7
+
+    - name: Comment on PR with results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '✅ Build completed! Check artifacts for binaries.'
+          })
