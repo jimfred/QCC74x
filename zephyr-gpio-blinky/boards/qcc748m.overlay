@@ -1,0 +1,28 @@
+/*
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	aliases {
+		led0 = &gpio_led0;
+		led1 = &gpio_led1;
+	};
+
+	gpio_leds {
+		compatible = "gpio-leds";
+
+		gpio_led0: gpio_led_0 {
+			/* GPIO14 - Channel 1 for logic analyzer */
+			gpios = <&gpio0 14 GPIO_ACTIVE_HIGH>;
+			label = "GPIO LED 0 - 1Hz";
+		};
+
+		gpio_led1: gpio_led_1 {
+			/* GPIO15 - Channel 2 for logic analyzer */
+			gpios = <&gpio0 15 GPIO_ACTIVE_HIGH>;
+			label = "GPIO LED 1 - 2Hz";
+		};
+	};
+};
