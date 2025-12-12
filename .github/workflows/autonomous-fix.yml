@@ -1,0 +1,172 @@
+name: Autonomous Build & Fix
+
+on:
+  push:
+    branches: [ 'claude/**', 'autonomous/**' ]
+  workflow_dispatch:
+    inputs:
+      max_attempts:
+        description: 'Maximum fix attempts'
+        required: false
+        default: '3'
+
+jobs:
+  autonomous-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Allow commits
+      pull-requests: write  # Allow PR comments
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Setup build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          git cmake ninja-build gperf ccache dfu-util \
+          device-tree-compiler wget python3-dev python3-pip \
+          python3-setuptools python3-wheel xz-utils file make \
+          gcc gcc-multilib g++-multilib libsdl2-dev
+
+    - name: Install West
+      run: |
+        pip3 install --user west
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: Run autonomous build agent
+      id: build_agent
+      continue-on-error: true
+      run: |
+        chmod +x scripts/autonomous-build-agent.sh
+
+        # Run with GitHub Actions-compatible settings
+        ./scripts/autonomous-build-agent.sh 3 2>&1 | tee /tmp/agent.log
+
+        # Capture exit code
+        echo "exit_code=$?" >> $GITHUB_OUTPUT
+
+    - name: Analyze build failures
+      if: steps.build_agent.outputs.exit_code != '0'
+      id: analyze
+      run: |
+        echo "## 🔍 Build Analysis" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ -f /tmp/build-output.log ]; then
+          echo "### Error Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          grep -E "(error:|Error:|ERROR:)" /tmp/build-output.log | head -10 >> $GITHUB_STEP_SUMMARY || echo "No errors found in log" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🤖 Autonomous Agent Log" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        tail -30 /tmp/autonomous-agent-*.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No agent log found" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+    - name: Create fix commit if changes made
+      if: steps.build_agent.outputs.exit_code == '0'
+      run: |
+        git config user.name "Autonomous Build Agent"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+        if ! git diff --quiet || ! git diff --cached --quiet; then
+          git add .
+          git commit -m "🤖 Autonomous fix: Build configuration updated
+
+          Applied automatic fixes to resolve build errors.
+          See workflow run for details.
+
+          Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          git push
+
+          echo "✅ Fixes committed and pushed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "ℹ️ No changes to commit" >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Upload logs
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: autonomous-agent-logs
+        path: |
+          /tmp/autonomous-agent-*.log
+          /tmp/build-output.log
+          /tmp/agent.log
+        retention-days: 14
+
+    - name: Comment on PR with results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+
+          let logContent = '';
+          try {
+            const logs = fs.readdirSync('/tmp').filter(f => f.startsWith('autonomous-agent-'));
+            if (logs.length > 0) {
+              logContent = fs.readFileSync(`/tmp/${logs[0]}`, 'utf8');
+            }
+          } catch (e) {
+            logContent = 'Log file not found';
+          }
+
+          const success = '${{ steps.build_agent.outputs.exit_code }}' === '0';
+
+          const body = success
+            ? `## ✅ Autonomous Build Successful\n\nThe build agent successfully built the project${logContent.includes('iteration') ? ' after applying automatic fixes' : ''}.\n\n### Actions Taken\n\`\`\`\n${logContent.split('\n').slice(-20).join('\n')}\n\`\`\``
+            : `## ❌ Autonomous Build Failed\n\nThe build agent attempted fixes but couldn't resolve all issues.\n\n### Last Errors\n\`\`\`\n${logContent.split('\n').slice(-20).join('\n')}\n\`\`\`\n\nCheck the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.`;
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: body
+          });
+
+    - name: Create issue if build fails repeatedly
+      if: failure() && github.event_name == 'push'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Check if similar issue exists
+          const issues = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'open',
+            labels: 'autonomous-build-failure'
+          });
+
+          if (issues.data.length === 0) {
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🤖 Autonomous build failing - manual intervention needed',
+              body: `The autonomous build agent has failed to fix the build errors automatically.\n\n**Branch:** ${context.ref}\n**Commit:** ${context.sha}\n**Workflow:** [View run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\nPlease review the logs and address the issues manually.`,
+              labels: ['autonomous-build-failure', 'bug']
+            });
+          }
+
+    - name: Final status
+      run: |
+        echo "## 🎯 Final Status" >> $GITHUB_STEP_SUMMARY
+
+        if [ "${{ steps.build_agent.outputs.exit_code }}" = "0" ]; then
+          echo "✅ **Build Successful**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The autonomous agent successfully built the project!" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Build Failed**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The autonomous agent couldn't fix all issues. Manual intervention required." >> $GITHUB_STEP_SUMMARY
+        fi
+
+        exit ${{ steps.build_agent.outputs.exit_code }}
