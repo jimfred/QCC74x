@@ -2,6 +2,8 @@
 
 A high-performance WS2812/WS2812B addressable RGB LED strip driver for the Qualcomm QCC748M EVK using the QCCSDK. This implementation uses **SPI with DMA** for reliable, CPU-efficient LED control.
 
+![Video](VID_20251207_185510176.gif)
+
 ## Features
 
 - **SPI-based WS2812 protocol** (not bit-banging) for reliable timing
